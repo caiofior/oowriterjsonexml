@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE script:module PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "module.dtd">
+<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Module1" script:language="StarBasic">REM  *****  BASIC  *****
+
+sub ImportaParametri
+    filepicker = createUnoService(&quot;com.sun.star.ui.dialogs.FilePicker&quot;)
+    filepicker.Title = &quot;File JSON da importare&quot;
+    filepicker.execute()
+    files = filepicker.getFiles()
+    FileOpenDialog=files(0)
+    f1 = FreeFile()
+    dim content as string
+    Open FileOpenDialog for Input as #f1
+    Do while NOT EOF(f1)
+	  Line Input #f1, s
+	  content = content+s
+	Loop
+
+    oDoc = ThisComponent
+    oTextTables = oDoc.getTextTables()
+    oTable = oTextTables.getByName(&quot;ParametriRisposta&quot;)
+	
+    parseString(oTable,content)
+
+end sub
+
+sub parseString (oTable ,content as String) 
+	Dim level as Integer
+	level =1
+    Dim lastPos as Integer
+    lastPos = 0
+    Dim attributeName as String
+    attributeName = &quot;&quot;
+    Dim iCount as Integer
+    iCount=0
+    Dim cellContent as String
+    cellContent=&quot;&quot;
+	For c = 1 to Len(content)-1
+	  If Mid(content,c,1) = &quot;{&quot; Then
+	    level = level +1
+	    lastPos = c+1
+	  ElseIf Mid(content,c,1) = &quot;}&quot; Then
+	    level = level -1
+	    lastPos = c+1
+	  ElseIf Mid(content,c,1) = &quot;[&quot; Then
+	    level = level +1
+	    oRows = oTable.getRows()
+	    iCount = oRows.getCount()
+    	oRows.insertByIndex( iCount, 1)
+    	iCount = oRows.getCount()
+        cell = oTable.getCellByPosition(0,iCount-1)
+        cellContent = &quot;&quot;
+        For tab = 1 to level
+	        cellContent = cellContent+&quot;  &quot; 
+	    Next tab
+	    cellContent = cellContent+&quot;&lt;numElementi&gt;&quot;
+        cell.setString(cellContent)
+        
+        level = level +1
+        
+     	iCount = oRows.getCount()
+    	oRows.insertByIndex( iCount, 1)
+    	iCount = oRows.getCount()
+        cell = oTable.getCellByPosition(0,iCount-1)
+        cellContent = &quot;&quot;
+        For tab = 1 to level
+	        cellContent = cellContent+&quot;  &quot; 
+	    Next tab
+	    cellContent = cellContent+&quot;&lt;elemento&gt;&quot;
+        cell.setString(cellContent)
+        
+        
+	    lastPos = c+1
+	  ElseIf Mid(content,c,1) = &quot;]&quot; Then
+	    level = level -2
+	    lastPos = c+1
+      ElseIf Mid(content,c,1) = &quot;,&quot; Then
+        lastPos = c+1
+	  ElseIf Mid(content,c,1) = &quot;:&quot; Then
+	    attributeName = Mid(content,lastPos+1,c-lastPos-2)
+	    oRows = oTable.getRows()
+	    iCount = oRows.getCount()
+    	oRows.insertByIndex( iCount, 1)
+    	iCount = oRows.getCount()
+        cell = oTable.getCellByPosition(0,iCount-1)
+        cellContent = &quot;&quot;
+        For tab = 1 to level
+	        cellContent = cellContent+&quot;  &quot; 
+	    Next tab
+	    cellContent = cellContent+&quot;&lt;&quot;+ attributeName+&quot;&gt;&quot;
+        cell.setString(cellContent)
+	    lastPos = c+1
+	  EndIf
+	Next c
+end sub
+
+sub ImportaXML
+    filepicker = createUnoService(&quot;com.sun.star.ui.dialogs.FilePicker&quot;)
+    filepicker.Title = &quot;File XML da importare&quot;
+    filepicker.execute()
+    files = filepicker.getFiles()
+	oDocBuilder = createUnoService(&quot;com.sun.star.xml.dom.DocumentBuilder&quot;)
+	ps = CreateUnoService(&quot;com.sun.star.util.PathSettings&quot;)
+	tempFile = ps.Temp+&quot;/txml.xml&quot;
+	
+    WriteDomToFile(oDocBuilder.parseURI(files(0)),tempFile)
+    
+    FileOpenDialog=tempFile
+    
+    f1 = FreeFile()
+    dim content as string
+    
+   
+    Open FileOpenDialog for Input as #f1
+      Do while NOT EOF(f1)
+      Line Input #f1, s
+       content = content+s+CHR$(10)
+    Loop
+	Bookmark = createUnoService(&quot;com.sun.star.text.Bookmark&quot;)
+	
+	oDoc = ThisComponent
+    Anchor = oDoc.Bookmarks.getByName(&quot;EsempioRisposta&quot;).getAnchor()
+    
+    &apos;oMRI = CreateUnoService( &quot;mytools.Mri&quot; )
+    &apos;oMRI.inspect(oDoc.Text)
+    Cursor = oDoc.Text.createTextCursorByRange(Anchor)
+    Anchor.getText().insertString(Cursor ,content,False)	 
+
+end sub
+
+REM Writes the structure of the current DOM document
+REM into a valid and nicely formatted XML text file.
+REM This subroutine and the called subroutines and functions are not
+REM document specific and needn&apos;t be part of the document library.
+REM They can be stored in the &quot;My Macros&quot; library.
+Sub WriteDomToFile(oDOM, sFilePath As String)
+  Dim oSimpleFileAccess &apos;SimpleFileAccess service
+  Dim oOutputStream     &apos;Stream returned from SimpleFileAccess
+  Dim oTextOutput       &apos;TextOutputStream service
+  Dim oNodes            &apos;List of child nodes of the root node
+  Dim i%
+  Dim iIndentLevel As Integer  &apos;Indentation level
+  Dim iIndentSpaces As Integer &apos;Number of spaces added to each indentation level
+  
+  On Error Goto Catch
+  
+  iIndentSpaces = 2
+  REM Set the output stream
+  sFilePath = ConvertToURL(sFilePath)
+  oSimpleFileAccess = createUnoService(&quot;com.sun.star.ucb.SimpleFileAccess&quot;)
+  With oSimpleFileAccess
+    If .exists(sFilePath) Then .kill(sFilePath)
+    oOutputStream = .openFileWrite(sFilePath)
+  End With
+  
+  oTextOutput = createUnoService(&quot;com.sun.star.io.TextOutputStream&quot;)
+  With oTextOutput
+    .OutputStream = oOutputStream
+    .setEncoding(&quot;UTF-8&quot;)
+    REM The first line is a processing instruction. It usually isn&apos;t part of
+    REM the DOM tree. So we write it separately.
+    .WriteString(&quot;&lt;?xml version=&quot;&quot;1.0&quot;&quot; encoding=&quot;&quot;UTF-8&quot;&quot;?&gt;&quot; &amp; CHR$(10))
+      
+    REM A DOM tree can consist of zero, one or more child nodes on the
+    REM root level. The child nodes are treated hierarchically.
+    If oDOM.hasChildNodes Then
+      oNodes = oDOM.getChildNodes
+      For i = 0 To oNodes.getLength - 1
+        PrintDom(oNodes.item(i), oTextOutput, iIndentLevel, iIndentSpaces)
+      Next
+    End If
+    .closeOutput
+  End With
+  oOutputStream.closeOutput
+
+  Exit Sub
+  
+  Catch:
+  Print &quot;Error &quot; &amp; Err &amp; &quot; (&quot; &amp; Error(Err) &amp; &quot;)&quot;
+End Sub
+
+REM Writes the elements of a DOM tree recursively line after line into a
+REM text file. Mark to start with iLevel 0.
+REM Indents lower levels by accumulating iIndent spaces, except for text nodes:
+REM they are written in the same line directly after the element start tag
+REM and are directly followed by the element end tag.
+REM It is assumed that there are either one text node or one or more other
+REM child nodes to an element, if any.
+Sub PrintDom(oNode, oStream, iLevel As Integer, iIndent As Integer)
+  Dim oElementChildren
+  Dim oChild
+  Dim sLine As String
+  Dim sAtt As String
+  Dim sIndent As String
+  Dim i%, iLen%
+  Dim sNodeName As String
+  
+  sNodeName = oNode.getNodeName
+  sIndent = String(iLevel * iIndent, &quot; &quot;)
+  
+  REM Only comments and elements are treated.
+  If oNode.getNodeType = com.sun.star.xml.dom.NodeType.COMMENT_NODE Then
+    REM XML comment
+    sLine = sIndent &amp; &quot;&lt;!-- &quot; &amp; oNode.getNodeValue &amp; &quot; --&gt;&quot;
+    oStream.writeString(sLine &amp; CHR$(10))
+  Elseif oNode.getNodeType = _
+      com.sun.star.xml.dom.NodeType.ELEMENT_NODE Then
+    REM XML element
+    sAtt = AttString(oNode.getAttributes)
+    REM Check, if the element has data. Otherwise the element is skipped.
+    If oNode.hasChildNodes OR sAtt &lt;&gt; &quot;&quot; Then
+      oElementChildren = oNode.getChildNodes
+      If HasContent(oElementChildren) Then
+        sLine = sIndent &amp; &quot;&lt;&quot; &amp; sNodeName &amp; sAtt &amp; &quot;&gt;&quot;  &apos;Start tag line
+        iLen = oElementChildren.getLength
+        If iLen = 1 Then
+          REM Test for text node, assuming that there are no other
+          REM sibling nodes besides a text node.
+          oChild = oElementChildren.item(0)
+          If oChild.getNodeType = com.sun.star.xml.dom.NodeType.TEXT_NODE Then
+            sLine = sLine &amp; oChild.getNodeValue &amp; &quot;&lt;/&quot; &amp; sNodeName &amp; &quot;&gt;&quot;
+            REM Write the line: start tag plus text value plus end tag.
+            oStream.writeString(sLine &amp; CHR$(10))
+            Exit Sub
+          End If
+        End If
+        REM At this point there are child elements other than text nodes.
+        REM Write the start tag line.
+        oStream.writeString(sLine &amp; CHR$(10))
+        For i = 0 To iLen - 1
+          REM Start the recursion, increment the indentation level
+          PrintDom(oElementChildren.item(i), oStream, iLevel + 1, iIndent)
+        Next
+        sLine = sIndent &amp; &quot;&lt;/&quot; &amp; sNodeName &amp; &quot;&gt;&quot;   &apos;End tag line
+        REM Write the end tag line.
+        oStream.writeString(sLine &amp; CHR$(10))
+      Else
+        REM There are no child elements to be written.
+        REM If there are attributes, the short notation is used.
+        REM If there are not even attributes, no element tag is written.
+        If sAtt &lt;&gt; &quot;&quot; Then
+          sLine = sIndent &amp; &quot;&lt;&quot; &amp; sNodeName &amp; sAtt &amp; &quot; /&gt;&quot;
+          REM Write the element in a short notation line.
+          oStream.writeString(sLine &amp; CHR$(10))
+        End If
+      End If
+    End If
+  End If
+End Sub
+
+
+REM Returns a string of all the attributes of an element.
+Function AttString(oAttList) As String
+  Dim oAtt                    &apos;A single attribute node
+  Dim sValue As String        &apos;A single attribute&apos;s value
+  Dim sAtts As String         &apos;The string containing all attributes
+  Dim i%
+  
+  If Not IsNull(oAttList) Then
+    For i = 0 To oAttList.getLength - 1
+      oAtt = oAttList.item(i)
+      sValue = oAtt.getNodeValue
+      If sValue &lt;&gt; &quot;&quot; Then
+        sAtts = sAtts &amp; &quot; &quot; &amp; oAtt.getNodeName &amp; &quot;=&quot;&quot;&quot; &amp; sValue &amp; &quot;&quot;&quot;&quot;
+      End If
+    Next
+  End If
+  AttString = sAtts
+End Function
+
+
+REM Checks recursively, if there is some child node with content, be it text,
+REM comment or attribute value other than &quot;&quot;. Returns True, if some content
+REM is found in the tree, otherwise False.
+REM It is called by PrintDom, before the actual element start tag is written,
+REM so PrintDom can abstain from printing an empty element.
+Function HasContent(oElementList) As Boolean
+  Dim oChild          &apos;A single child node of oElementList
+  Dim oAttributes     &apos;The attributes of oChild
+  Dim oChildren       &apos;The child nodes of oChild
+  Dim i%, j%
+  
+  For i = 0 To oElementList.getLength - 1
+    oChild = oElementList.item(i)
+    If oChild.hasAttributes Then
+      oAttributes = oChild.getAttributes
+      For j = 0 To oAttributes.getLength - 1
+        If oAttributes.item(j).getNodeValue &lt;&gt; &quot;&quot; Then
+          HasContent = True
+          Exit Function
+        End If
+      Next
+    End If
+    If oChild.getNodeType = com.sun.star.xml.dom.NodeType.TEXT_NODE Then
+      If oChild.getNodeValue &lt;&gt; &quot;&quot; Then
+          HasContent = True
+          Exit Function
+      End If
+    Elseif oChild.getNodeType = com.sun.star.xml.dom.NodeType.COMMENT_NODE Then
+      If oChild.getNodeValue &lt;&gt; &quot;&quot; Then
+          HasContent = True
+          Exit Function
+      End If
+    Else
+      oChildren = oChild.getChildNodes()
+      If oChildren.getLength &lt;&gt; 0 Then
+        REM Start the recursion
+        If HasContent(oChildren) Then
+          HasContent = True
+          Exit Function
+        End If
+      End If
+    End If
+  Next
+  HasContent = False
+End Function
+</script:module>
